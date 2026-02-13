@@ -1,8 +1,20 @@
 console.log("🚀 CLOUD BOOT SEQUENCE INITIATED...");
-const puppeteer = require('puppeteer');
-const axios = require('axios');
-const fs = require('fs');
+// Replace the old puppeteer require with these
+const puppeteer = require('puppeteer-extra');
+const StealthPlugin = require('puppeteer-extra-plugin-stealth');
+puppeteer.use(StealthPlugin()); // Tell puppeteer to use the stealth "mask"
 
+// ... keep your other requires (axios, fs, etc.)
+
+const browser = await puppeteer.launch({
+    headless: "new",
+    args: [
+        '--no-sandbox', 
+        '--disable-setuid-sandbox',
+        '--disable-blink-features=AutomationControlled', // Hides "I am a bot" flag
+        '--user-agent=Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36'
+    ]
+});
 // --- CONFIGURATION ---
 const SITES_TO_CHECK = [
     'https://sproutgigs.com',
