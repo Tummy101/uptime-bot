@@ -5,7 +5,7 @@ puppeteer.use(StealthPlugin());
 const axios = require('axios');
 const fs = require('fs');
 
-console.log("🚀 LEVEL 3.1: SYNTHETIC ENGINE INITIATED...");
+console.log("🚀 LEVEL 3.2: SYNTHETIC ENGINE INITIATED...");
 
 // --- CONFIGURATION ---
 const SITES_TO_CHECK = [
@@ -105,27 +105,38 @@ async function checkAllSites() {
                         } else if (url.includes('wikipedia.org')) {
                             try {
                                 await page.waitForSelector('input[name="search"]', { timeout: 10000 });
-                                await page.type('input[name="search"]', 'Node.js');
-                                await page.keyboard.press('Enter');
                                 
-                                // FIX: Wait for the browser tab title to change instead of network navigation
-                                await page.waitForFunction(() => document.title.includes('Node.js'), { timeout: 15000 });
+                                // FIX: Type slowly like a human so Wikipedia's code wakes up
+                                await page.type('input[name="search"]', 'Node.js', { delay: 150 }); 
+                                
+                                await Promise.all([
+                                    page.waitForNavigation({ waitUntil: 'domcontentloaded', timeout: 15000 }),
+                                    page.keyboard.press('Enter')
+                                ]);
+                                
+                                const newTitle = await page.title();
+                                if (!newTitle.includes('Node.js')) {
+                                    throw new Error(`Search failed. Page Title is currently: "${newTitle}"`);
+                                }
                                 synthMessage = " | 🤖 Synth: PASSED";
                             } catch (synthErr) {
-                                throw new Error(`Search failed. Page Title is currently: "${await page.title()}"`);
+                                throw new Error(`Synthetic Failure - ${synthErr.message}`);
                             }
                         } else if (url.includes('classyhaven.com.ng')) {
                             try {
                                 await page.waitForSelector('body', { timeout: 10000 });
                                 
-                                const linkCount = await page.evaluate(() => document.querySelectorAll('a').length);
+                                // FIX: Wait a tiny bit for the text to fully render
+                                await new Promise(r => setTimeout(r, 2000));
                                 
-                                if (linkCount < 1) {
-                                    // FIX: Grab the text on the screen so we can see what the bot sees
-                                    const bodyText = await page.evaluate(() => document.body.innerText.replace(/\n/g, ' ').substring(0, 100));
-                                    throw new Error(`0 links found. Screen text says: "${bodyText || 'BLANK SCREEN'}"`);
+                                const bodyText = await page.evaluate(() => document.body.innerText);
+                                
+                                // Verify the core structural text exists
+                                if (!bodyText.includes('Classy Haven') && !bodyText.includes('CLOSET')) {
+                                    const snippet = bodyText.replace(/\n/g, ' ').substring(0, 100);
+                                    throw new Error(`Text missing. Screen says: "${snippet || 'BLANK SCREEN'}"`);
                                 }
-                                synthMessage = ` | 🤖 Synth: PASSED (${linkCount} links)`;
+                                synthMessage = ` | 🤖 Synth: TEXT RENDER PASSED`;
                             } catch (synthErr) {
                                 throw new Error(`Synthetic Failure - ${synthErr.message}`);
                             }
@@ -149,7 +160,6 @@ async function checkAllSites() {
                         
                         const partialData = perfMessage ? `(${perfMessage}${sslMessage})` : "";
                         
-                        // FIX: Do not send individual alerts on the very first run to prevent spam
                         if (siteStates[url] !== "DOWN" && !isFirstRun) {
                             await sendTelegramAlert(`🚨 ALERT: ${url} is DOWN! ${partialData}\nReason: ${error.message}`);
                         }
