@@ -16,15 +16,12 @@ const SITES_TO_CHECK = [
 
 const CHECK_INTERVAL = 60000; 
 
-// Priority: Use Railway Variables. Fallback: Use your manual keys.
 const TELEGRAM_BOT_TOKEN = process.env.TELEGRAM_BOT_TOKEN || '8424829445:AAGkcpHHk9CyRNxDAazmfhXHPby5I7wauSc';
 const TELEGRAM_CHAT_ID = process.env.TELEGRAM_CHAT_ID || '7262907399';
 
-// --- STATE MEMORY ---
 let siteStates = {}; 
 let isFirstRun = true;
 
-// --- TELEGRAM FUNCTION ---
 async function sendTelegramAlert(message) {
     const url = `https://api.telegram.org/bot${TELEGRAM_BOT_TOKEN}/sendMessage`;
     try {
@@ -34,7 +31,6 @@ async function sendTelegramAlert(message) {
     }
 }
 
-// --- LOGGING FUNCTION ---
 function logToHistory(url, status, message) {
     const date = new Date().toLocaleString();
     fs.appendFile('uptime_history.csv', `${date}, ${url}, ${status}, ${message}\n`, (err) => {
@@ -42,39 +38,52 @@ function logToHistory(url, status, message) {
     });
 }
 
-// --- MAIN ENGINE ---
 async function checkAllSites() {
-    console.log(`\n[${new Date().toLocaleTimeString()}] 🟡 Checking sites...`);
+    console.log(`\n[${new Date().toLocaleTimeString()}] 🟡 Starting Human-Like Check...`);
     
     let browser;
     try {
         browser = await puppeteer.launch({
             headless: "new",
-            executablePath: process.env.PUPPETEER_EXECUTABLE_PATH || null,
             args: [
                 '--no-sandbox', 
                 '--disable-setuid-sandbox',
                 '--disable-dev-shm-usage',
-                '--single-process',
-                '--disable-blink-features=AutomationControlled'
+                '--disable-blink-features=AutomationControlled',
+                '--window-size=1920,1080'
             ]
         });
 
-        let startupMessage = "📊 **Cloud Monitor Report:**\n";
+        let reportLines = [];
 
         for (const url of SITES_TO_CHECK) {
+            const page = await browser.newPage();
+            
+            // Mask as a real desktop screen
+            await page.setViewport({ width: 1920, height: 1080 });
+
             try {
-                const page = await browser.newPage();
-                // Set a realistic User Agent to bypass simple bot checks
-                await page.setUserAgent('Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36');
-                
-                const response = await page.goto(url, { waitUntil: 'networkidle2', timeout: 30000 });
+                // Visit site
+                const response = await page.goto(url, { 
+                    waitUntil: 'domcontentloaded', 
+                    timeout: 60000 
+                });
+
+                // --- THE "HUMAN" PAUSE ---
+                // Wait 5-8 seconds to let Cloudflare challenges resolve
+                const waitTime = Math.floor(Math.random() * 3000) + 5000;
+                await new Promise(r => setTimeout(r, waitTime));
+
                 const title = await page.title();
                 const status = response ? response.status() : 0;
 
-                // Define "DOWN" logic (Cloudflare 403s are treated as alerts here)
-                const isDown = status >= 400 || title.includes("Page Not Found") || title.includes("Just a moment");
+                // Detect Cloudflare blocks
+                const isBlocked = title.includes("Just a moment") || title.includes("Cloudflare") || status === 403;
+                const isDown = status >= 400 || title.includes("Page Not Found");
 
+                if (isBlocked) {
+                    throw new Error(`Cloudflare Blocked (Status: ${status})`);
+                }
                 if (isDown) {
                     throw new Error(`Status: ${status} | Title: "${title}"`);
                 }
@@ -87,33 +96,37 @@ async function checkAllSites() {
                 }
                 
                 siteStates[url] = "UP";
-                startupMessage += `✅ UP: ${url}\n`;
-                await page.close();
+                reportLines.push(`✅ UP: ${url}`);
 
             } catch (error) {
-                console.log(`   ❌ DOWN: ${url}`);
+                console.log(`   ❌ DOWN: ${url} - ${error.message}`);
                 logToHistory(url, "DOWN", error.message);
-                await sendTelegramAlert(`🚨 ALERT: ${url} is DOWN!\nError: ${error.message}`);
+                
+                // Only alert if state changed or it's the first run
+                if (siteStates[url] !== "DOWN") {
+                    await sendTelegramAlert(`🚨 ALERT: ${url} is DOWN!\nError: ${error.message}`);
+                }
                 
                 siteStates[url] = "DOWN";
-                startupMessage += `❌ DOWN: ${url}\n`;
+                reportLines.push(`❌ DOWN: ${url}`);
+            } finally {
+                await page.close();
             }
         }
 
         if (isFirstRun) {
-            await sendTelegramAlert(startupMessage);
+            await sendTelegramAlert(`📊 **Initial Cloud Report:**\n${reportLines.join('\n')}`);
             isFirstRun = false;
         }
 
     } catch (err) {
-        console.error("BROWSER CRASH:", err);
+        console.error("CRITICAL BROWSER ERROR:", err);
     } finally {
         if (browser) await browser.close();
     }
 }
 
 // --- START ---
-console.log("🤖 Monitor Bot Started...");
-// Run once immediately, then every interval
+console.log("🤖 Ultimate Stealth Monitor Started...");
 checkAllSites();
 setInterval(checkAllSites, CHECK_INTERVAL);
