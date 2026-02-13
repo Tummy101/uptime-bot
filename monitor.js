@@ -1,4 +1,4 @@
-require('dotenv').config(); // Load the secrets
+console.log("🚀 CLOUD BOOT SEQUENCE INITIATED...");
 const puppeteer = require('puppeteer');
 const axios = require('axios');
 const fs = require('fs');
@@ -6,29 +6,22 @@ const fs = require('fs');
 // --- CONFIGURATION ---
 const SITES_TO_CHECK = [
     'https://sproutgigs.com',
-    'https://en.wikipedia.org', // Replaced Google with Wikipedia
-    'https://sproutgigs.com/broken-test'
+    'https://en.wikipedia.org', 
+    'https://dherhoodsub.ng' // Keep this to test the "DOWN" alert
 ];
 
-const CHECK_INTERVAL = 60000; 
+const CHECK_INTERVAL = 60000; // Check every 60 seconds
 
-// USE THE SECRETS (No more hardcoded passwords!)
-const TELEGRAM_BOT_TOKEN = process.env.TELEGRAM_BOT_TOKEN;
-const TELEGRAM_CHAT_ID = process.env.TELEGRAM_CHAT_ID;
+const TELEGRAM_BOT_TOKEN = '8424829445:AAGkcpHHk9CyRNxDAazmfhXHPby5I7wauSc';
+const TELEGRAM_CHAT_ID = '7262907399';
 
-// ... (The rest of your code stays exactly the same)
-// --- 2. LOGGING FUNCTION (The "Historian") ---
-function logToHistory(url, status, message) {
-    const date = new Date().toLocaleString();
-    const logEntry = `${date}, ${url}, ${status}, ${message}\n`;
+// --- STATE MEMORY ---
+// This dictionary remembers the last status of every site
+// Example: { "google.com": "UP", "sproutgigs.com": "DOWN" }
+let siteStates = {}; 
+let isFirstRun = true;
 
-    // Appends to a file called 'uptime_history.csv'
-    fs.appendFile('uptime_history.csv', logEntry, (err) => {
-        if (err) console.error("Could not write to file:", err);
-    });
-}
-
-// --- 3. TELEGRAM FUNCTION ---
+// --- TELEGRAM FUNCTION ---
 async function sendTelegramAlert(message) {
     const url = `https://api.telegram.org/bot${TELEGRAM_BOT_TOKEN}/sendMessage`;
     try {
@@ -38,57 +31,87 @@ async function sendTelegramAlert(message) {
     }
 }
 
-// --- 4. THE CHECKER ENGINE ---
-async function checkAllSites() {
-    console.log(`\n[${new Date().toLocaleTimeString()}] 🟡 Starting Batch Check...`);
-    
-    // Launch ONE browser to check ALL sites (Saves RAM)
-    const browser = await puppeteer.launch({
-        headless: "new",
-        args: ['--no-sandbox', '--disable-setuid-sandbox']
+// --- LOGGING FUNCTION ---
+function logToHistory(url, status, message) {
+    const date = new Date().toLocaleString();
+    fs.appendFile('uptime_history.csv', `${date}, ${url}, ${status}, ${message}\n`, (err) => {
+        if (err) console.error("Log Error:", err);
     });
+}
 
-    // Loop through every URL in our list
+// --- MAIN ENGINE ---
+async function checkAllSites() {
+    console.log(`\n[${new Date().toLocaleTimeString()}] 🟡 Checking sites...`);
+    
+    // Launch browser
+    const browser = await puppeteer.launch({
+    headless: "new",
+    executablePath: process.env.PUPPETEER_EXECUTABLE_PATH || null, // Helps Railway find Chrome
+    args: [
+        '--no-sandbox', 
+        '--disable-setuid-sandbox',
+        '--disable-dev-shm-usage', // Recommended for low-memory cloud servers
+        '--single-process'         // Saves RAM on Railway
+    ]
+});
+
+    let startupMessage = "📊 **Startup Report:**\n";
+
     for (const url of SITES_TO_CHECK) {
         try {
             const page = await browser.newPage();
             await page.setUserAgent('Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36');
             
-            // Check the site
             const response = await page.goto(url, { waitUntil: 'networkidle2', timeout: 30000 });
             const title = await page.title();
             const status = response ? response.status() : 0;
 
-            // Error Logic
-            const isPageMissing = title.includes("Page Not Found") || title.includes("404");
-            const isStatusBad = status >= 400;
+            // Define "DOWN" logic
+            const isDown = status >= 400 || title.includes("Page Not Found") || title.includes("404");
 
-            if (isPageMissing || isStatusBad) {
+            if (isDown) {
                 throw new Error(`Status: ${status} | Title: "${title}"`);
             }
 
+            // --- SITE IS UP ---
             console.log(`   ✅ UP: ${url}`);
-            logToHistory(url, "UP", "OK"); // Save to file
-            await page.close(); // Close tab to save memory
+            logToHistory(url, "UP", "OK");
+
+            // LOGIC: If it was DOWN before, send a RECOVERY alert
+            if (siteStates[url] === "DOWN" && !isFirstRun) {
+                await sendTelegramAlert(`🟢 RECOVERY: ${url} is back online!`);
+            }
+            
+            // Save current state
+            siteStates[url] = "UP";
+            startupMessage += `✅ UP: ${url}\n`;
+
+            await page.close();
 
         } catch (error) {
-            console.error(`   ❌ DOWN: ${url} | ${error.message}`);
-            
-            // 1. Save to File
+            // --- SITE IS DOWN ---
+            console.log(`   ❌ DOWN: ${url}`);
             logToHistory(url, "DOWN", error.message);
-            
-            // 2. Alert Phone
+
+            // Send Alert (You said you want these every time)
             await sendTelegramAlert(`🚨 ALERT: ${url} is DOWN!\nError: ${error.message}`);
+            
+            siteStates[url] = "DOWN";
+            startupMessage += `❌ DOWN: ${url}\n`;
         }
     }
 
     await browser.close();
-    console.log("------------------------------------------------");
+
+    // Send the big report ONLY on the first run
+    if (isFirstRun) {
+        await sendTelegramAlert(startupMessage);
+        console.log("📨 Startup Report sent.");
+        isFirstRun = false;
+    }
 }
 
-// --- 5. STARTUP ---
-console.log("🤖 Ultimate Monitor Bot Started...");
-sendTelegramAlert("🤖 Ultimate Monitor Bot Started. Watching " + SITES_TO_CHECK.length + " sites.");
-
+// --- START ---
+console.log("🤖 Monitor Bot Started...");
 checkAllSites();
 setInterval(checkAllSites, CHECK_INTERVAL);
