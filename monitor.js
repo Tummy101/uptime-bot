@@ -5,7 +5,7 @@ puppeteer.use(StealthPlugin());
 const axios = require('axios');
 const fs = require('fs');
 
-console.log("🚀 LEVEL 3.2: SYNTHETIC ENGINE INITIATED...");
+console.log("🚀 LEVEL 3.3: SYNTHETIC ENGINE INITIATED...");
 
 // --- CONFIGURATION ---
 const SITES_TO_CHECK = [
@@ -106,32 +106,26 @@ async function checkAllSites() {
                             try {
                                 await page.waitForSelector('input[name="search"]', { timeout: 10000 });
                                 
-                                // FIX: Type slowly like a human so Wikipedia's code wakes up
-                                await page.type('input[name="search"]', 'Node.js', { delay: 150 }); 
+                                // Type slowly like a human
+                                await page.type('input[name="search"]', 'Node.js', { delay: 100 }); 
                                 
-                                await Promise.all([
-                                    page.waitForNavigation({ waitUntil: 'domcontentloaded', timeout: 15000 }),
-                                    page.keyboard.press('Enter')
-                                ]);
+                                // FIX: Just press Enter. We removed the strict 'waitForNavigation' trap.
+                                await page.keyboard.press('Enter');
                                 
-                                const newTitle = await page.title();
-                                if (!newTitle.includes('Node.js')) {
-                                    throw new Error(`Search failed. Page Title is currently: "${newTitle}"`);
-                                }
+                                // FIX: Wait up to 15 seconds for the browser tab to literally change to "Node.js"
+                                await page.waitForFunction(() => document.title.includes('Node.js'), { timeout: 15000 });
+                                
                                 synthMessage = " | 🤖 Synth: PASSED";
                             } catch (synthErr) {
-                                throw new Error(`Synthetic Failure - ${synthErr.message}`);
+                                throw new Error(`Synthetic Failure - Search failed to load Node.js page in time.`);
                             }
                         } else if (url.includes('classyhaven.com.ng')) {
                             try {
                                 await page.waitForSelector('body', { timeout: 10000 });
-                                
-                                // FIX: Wait a tiny bit for the text to fully render
-                                await new Promise(r => setTimeout(r, 2000));
+                                await new Promise(r => setTimeout(r, 2000)); // Wait for text to paint
                                 
                                 const bodyText = await page.evaluate(() => document.body.innerText);
                                 
-                                // Verify the core structural text exists
                                 if (!bodyText.includes('Classy Haven') && !bodyText.includes('CLOSET')) {
                                     const snippet = bodyText.replace(/\n/g, ' ').substring(0, 100);
                                     throw new Error(`Text missing. Screen says: "${snippet || 'BLANK SCREEN'}"`);
