@@ -5,7 +5,7 @@ puppeteer.use(StealthPlugin());
 const axios = require('axios');
 const fs = require('fs');
 
-console.log("🚀 LEVEL 3.3: SYNTHETIC ENGINE INITIATED...");
+console.log("🚀 LEVEL 3.4: SYNTHETIC ENGINE INITIATED...");
 
 // --- CONFIGURATION ---
 const SITES_TO_CHECK = [
@@ -59,6 +59,9 @@ async function checkAllSites() {
                 for (const url of SITES_TO_CHECK) {
                     const page = await browser.newPage();
                     
+                    // FIX: Force the bot into a 1080p Desktop screen so mobile sites don't load!
+                    await page.setViewport({ width: 1920, height: 1080 });
+                    
                     let loadTimeMs = 0;
                     let perfMessage = "";
                     let sslMessage = "";
@@ -104,15 +107,12 @@ async function checkAllSites() {
                             synthMessage = " | 🤖 Synth: Skipped (Cloudflare)";
                         } else if (url.includes('wikipedia.org')) {
                             try {
-                                await page.waitForSelector('input[name="search"]', { timeout: 10000 });
+                                // FIX: Ensure the search bar is physically visible on the screen before typing
+                                await page.waitForSelector('input[name="search"]', { visible: true, timeout: 10000 });
                                 
-                                // Type slowly like a human
                                 await page.type('input[name="search"]', 'Node.js', { delay: 100 }); 
-                                
-                                // FIX: Just press Enter. We removed the strict 'waitForNavigation' trap.
                                 await page.keyboard.press('Enter');
                                 
-                                // FIX: Wait up to 15 seconds for the browser tab to literally change to "Node.js"
                                 await page.waitForFunction(() => document.title.includes('Node.js'), { timeout: 15000 });
                                 
                                 synthMessage = " | 🤖 Synth: PASSED";
@@ -122,7 +122,7 @@ async function checkAllSites() {
                         } else if (url.includes('classyhaven.com.ng')) {
                             try {
                                 await page.waitForSelector('body', { timeout: 10000 });
-                                await new Promise(r => setTimeout(r, 2000)); // Wait for text to paint
+                                await new Promise(r => setTimeout(r, 2000)); 
                                 
                                 const bodyText = await page.evaluate(() => document.body.innerText);
                                 
