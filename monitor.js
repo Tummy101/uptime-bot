@@ -7,7 +7,6 @@ const fs = require('fs');
 
 console.log("🚀 LEVEL 3.4: SYNTHETIC ENGINE INITIATED...");
 
-// --- CONFIGURATION ---
 const SITES_TO_CHECK = [
     'https://en.wikipedia.org',
     'https://classyhaven.com.ng' 
@@ -58,8 +57,6 @@ async function checkAllSites() {
 
                 for (const url of SITES_TO_CHECK) {
                     const page = await browser.newPage();
-                    
-                    // FIX: Force the bot into a 1080p Desktop screen so mobile sites don't load!
                     await page.setViewport({ width: 1920, height: 1080 });
                     
                     let loadTimeMs = 0;
@@ -84,7 +81,6 @@ async function checkAllSites() {
                             throw new Error(`CRITICAL DOWN | Status: ${status}`);
                         }
 
-                        // --- LEVEL 1+: SSL MONITORING ---
                         if (securityDetails) {
                             const validToMs = securityDetails.validTo() * 1000;
                             const daysRemaining = Math.floor((validToMs - Date.now()) / (1000 * 60 * 60 * 24));
@@ -102,19 +98,14 @@ async function checkAllSites() {
                             }
                         }
 
-                        // --- LEVEL 3: SYNTHETIC TRANSACTIONS ---
                         if (isCloudflare) {
                             synthMessage = " | 🤖 Synth: Skipped (Cloudflare)";
                         } else if (url.includes('wikipedia.org')) {
                             try {
-                                // FIX: Ensure the search bar is physically visible on the screen before typing
                                 await page.waitForSelector('input[name="search"]', { visible: true, timeout: 10000 });
-                                
                                 await page.type('input[name="search"]', 'Node.js', { delay: 100 }); 
                                 await page.keyboard.press('Enter');
-                                
                                 await page.waitForFunction(() => document.title.includes('Node.js'), { timeout: 15000 });
-                                
                                 synthMessage = " | 🤖 Synth: PASSED";
                             } catch (synthErr) {
                                 throw new Error(`Synthetic Failure - Search failed to load Node.js page in time.`);
@@ -123,7 +114,6 @@ async function checkAllSites() {
                             try {
                                 await page.waitForSelector('body', { timeout: 10000 });
                                 await new Promise(r => setTimeout(r, 2000)); 
-                                
                                 const bodyText = await page.evaluate(() => document.body.innerText);
                                 
                                 if (!bodyText.includes('Classy Haven') && !bodyText.includes('CLOSET')) {
@@ -151,7 +141,6 @@ async function checkAllSites() {
                     } catch (error) {
                         console.log(`   ❌ DOWN: ${url} - ${error.message}`);
                         logToHistory(url, "DOWN", error.message);
-                        
                         const partialData = perfMessage ? `(${perfMessage}${sslMessage})` : "";
                         
                         if (siteStates[url] !== "DOWN" && !isFirstRun) {
@@ -190,6 +179,5 @@ async function checkAllSites() {
     }
 }
 
-// --- START ---
 checkAllSites();
 setInterval(checkAllSites, CHECK_INTERVAL);
