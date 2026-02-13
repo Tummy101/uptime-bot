@@ -5,7 +5,7 @@ puppeteer.use(StealthPlugin());
 const axios = require('axios');
 const fs = require('fs');
 
-console.log("🚀 LEVEL 3: SYNTHETIC ENGINE INITIATED...");
+console.log("🚀 LEVEL 3.1: SYNTHETIC ENGINE INITIATED...");
 
 // --- CONFIGURATION ---
 const SITES_TO_CHECK = [
@@ -59,7 +59,6 @@ async function checkAllSites() {
                 for (const url of SITES_TO_CHECK) {
                     const page = await browser.newPage();
                     
-                    // Variables declared outside so the Error block can still see them!
                     let loadTimeMs = 0;
                     let perfMessage = "";
                     let sslMessage = "";
@@ -67,8 +66,7 @@ async function checkAllSites() {
 
                     try {
                         const startTime = Date.now();
-                        // Using networkidle2 is better for sites like Classy Haven to ensure JavaScript loads
-                        const response = await page.goto(url, { waitUntil: 'networkidle2', timeout: 30000 });
+                        const response = await page.goto(url, { waitUntil: 'domcontentloaded', timeout: 30000 });
                         loadTimeMs = Date.now() - startTime;
                         perfMessage = `⏱️ ${loadTimeMs}ms`;
 
@@ -92,7 +90,7 @@ async function checkAllSites() {
 
                             if (daysRemaining <= 14) {
                                 sslMessage = ` | ⚠️ SSL Expires in ${daysRemaining} days`;
-                                if (siteStates[url + "_ssl"] !== "EXPIRING") {
+                                if (siteStates[url + "_ssl"] !== "EXPIRING" && !isFirstRun) {
                                     await sendTelegramAlert(`🔐 SSL WARNING: ${url} certificate expires in ${daysRemaining} days!`);
                                     siteStates[url + "_ssl"] = "EXPIRING";
                                 }
@@ -108,29 +106,24 @@ async function checkAllSites() {
                             try {
                                 await page.waitForSelector('input[name="search"]', { timeout: 10000 });
                                 await page.type('input[name="search"]', 'Node.js');
+                                await page.keyboard.press('Enter');
                                 
-                                await Promise.all([
-                                    // Increased timeout to 30 seconds for Wikipedia's search to load
-                                    page.waitForNavigation({ waitUntil: 'domcontentloaded', timeout: 30000 }),
-                                    page.keyboard.press('Enter')
-                                ]);
-                                
-                                const newTitle = await page.title();
-                                if (!newTitle.includes('Node.js')) {
-                                    throw new Error("Search button failed to return correct data.");
-                                }
+                                // FIX: Wait for the browser tab title to change instead of network navigation
+                                await page.waitForFunction(() => document.title.includes('Node.js'), { timeout: 15000 });
                                 synthMessage = " | 🤖 Synth: PASSED";
                             } catch (synthErr) {
-                                throw new Error(`Synthetic Failure - ${synthErr.message}`);
+                                throw new Error(`Search failed. Page Title is currently: "${await page.title()}"`);
                             }
                         } else if (url.includes('classyhaven.com.ng')) {
                             try {
-                                // Explicitly wait for links to be drawn on the screen before counting!
-                                await page.waitForSelector('a', { timeout: 15000 }).catch(() => null); 
+                                await page.waitForSelector('body', { timeout: 10000 });
+                                
                                 const linkCount = await page.evaluate(() => document.querySelectorAll('a').length);
                                 
                                 if (linkCount < 1) {
-                                    throw new Error("Page loaded, but zero links found. Possible blank page or database error.");
+                                    // FIX: Grab the text on the screen so we can see what the bot sees
+                                    const bodyText = await page.evaluate(() => document.body.innerText.replace(/\n/g, ' ').substring(0, 100));
+                                    throw new Error(`0 links found. Screen text says: "${bodyText || 'BLANK SCREEN'}"`);
                                 }
                                 synthMessage = ` | 🤖 Synth: PASSED (${linkCount} links)`;
                             } catch (synthErr) {
@@ -154,10 +147,10 @@ async function checkAllSites() {
                         console.log(`   ❌ DOWN: ${url} - ${error.message}`);
                         logToHistory(url, "DOWN", error.message);
                         
-                        // We attach the Performance and SSL data to the Error message so you still see it!
                         const partialData = perfMessage ? `(${perfMessage}${sslMessage})` : "";
                         
-                        if (siteStates[url] !== "DOWN") {
+                        // FIX: Do not send individual alerts on the very first run to prevent spam
+                        if (siteStates[url] !== "DOWN" && !isFirstRun) {
                             await sendTelegramAlert(`🚨 ALERT: ${url} is DOWN! ${partialData}\nReason: ${error.message}`);
                         }
                         
