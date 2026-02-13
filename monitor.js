@@ -59,10 +59,18 @@ async function checkAllSites() {
                 for (const url of SITES_TO_CHECK) {
                     const page = await browser.newPage();
                     
+                    // Variables declared outside so the Error block can still see them!
+                    let loadTimeMs = 0;
+                    let perfMessage = "";
+                    let sslMessage = "";
+                    let synthMessage = "";
+
                     try {
                         const startTime = Date.now();
-                        const response = await page.goto(url, { waitUntil: 'domcontentloaded', timeout: 30000 });
-                        const loadTimeMs = Date.now() - startTime;
+                        // Using networkidle2 is better for sites like Classy Haven to ensure JavaScript loads
+                        const response = await page.goto(url, { waitUntil: 'networkidle2', timeout: 30000 });
+                        loadTimeMs = Date.now() - startTime;
+                        perfMessage = `⏱️ ${loadTimeMs}ms`;
 
                         const title = await page.title();
                         const status = response ? response.status() : 0;
@@ -75,52 +83,13 @@ async function checkAllSites() {
                             throw new Error(`CRITICAL DOWN | Status: ${status}`);
                         }
 
-                        let sslMessage = "";
-                        let synthMessage = "";
-                        let perfMessage = `⏱️ ${loadTimeMs}ms`;
-
-                        // --- LEVEL 3: SYNTHETIC TRANSACTIONS ---
-                        if (isCloudflare) {
-                            synthMessage = " | 🤖 Synth: Skipped (Cloudflare Wall)";
-                        } else if (url.includes('wikipedia.org')) {
-                            // Wikipedia Search Test
-                            try {
-                                await page.waitForSelector('input[name="search"]', { timeout: 5000 });
-                                await page.type('input[name="search"]', 'Node.js');
-                                
-                                await Promise.all([
-                                    page.waitForNavigation({ waitUntil: 'domcontentloaded', timeout: 10000 }),
-                                    page.keyboard.press('Enter')
-                                ]);
-                                
-                                const newTitle = await page.title();
-                                if (!newTitle.includes('Node.js')) {
-                                    throw new Error("Search button failed to return correct data.");
-                                }
-                                synthMessage = " | 🤖 Synth: SEARCH PASSED";
-                            } catch (synthErr) {
-                                throw new Error(`Synthetic Failure - ${synthErr.message}`);
-                            }
-                        } else if (url.includes('classyhaven.com.ng')) {
-                            // Classy Haven Render Test
-                            try {
-                                // Count how many clickable links are on the page to ensure it's not a blank white screen
-                                const linkCount = await page.evaluate(() => document.querySelectorAll('a').length);
-                                
-                                if (linkCount < 1) {
-                                    throw new Error("Page loaded, but zero links found. Possible blank page or database error.");
-                                }
-                                synthMessage = ` | 🤖 Synth: RENDER PASSED (${linkCount} links found)`;
-                            } catch (synthErr) {
-                                throw new Error(`Synthetic Failure - ${synthErr.message}`);
-                            }
-                        }
-
                         // --- LEVEL 1+: SSL MONITORING ---
                         if (securityDetails) {
                             const validToMs = securityDetails.validTo() * 1000;
                             const daysRemaining = Math.floor((validToMs - Date.now()) / (1000 * 60 * 60 * 24));
                             
+                            sslMessage = ` | 🔐 SSL: ${daysRemaining}d`;
+
                             if (daysRemaining <= 14) {
                                 sslMessage = ` | ⚠️ SSL Expires in ${daysRemaining} days`;
                                 if (siteStates[url + "_ssl"] !== "EXPIRING") {
@@ -129,23 +98,53 @@ async function checkAllSites() {
                                 }
                             } else {
                                 siteStates[url + "_ssl"] = "SECURE";
-                                sslMessage = ` | 🔐 SSL: ${daysRemaining}d`;
+                            }
+                        }
+
+                        // --- LEVEL 3: SYNTHETIC TRANSACTIONS ---
+                        if (isCloudflare) {
+                            synthMessage = " | 🤖 Synth: Skipped (Cloudflare)";
+                        } else if (url.includes('wikipedia.org')) {
+                            try {
+                                await page.waitForSelector('input[name="search"]', { timeout: 10000 });
+                                await page.type('input[name="search"]', 'Node.js');
+                                
+                                await Promise.all([
+                                    // Increased timeout to 30 seconds for Wikipedia's search to load
+                                    page.waitForNavigation({ waitUntil: 'domcontentloaded', timeout: 30000 }),
+                                    page.keyboard.press('Enter')
+                                ]);
+                                
+                                const newTitle = await page.title();
+                                if (!newTitle.includes('Node.js')) {
+                                    throw new Error("Search button failed to return correct data.");
+                                }
+                                synthMessage = " | 🤖 Synth: PASSED";
+                            } catch (synthErr) {
+                                throw new Error(`Synthetic Failure - ${synthErr.message}`);
+                            }
+                        } else if (url.includes('classyhaven.com.ng')) {
+                            try {
+                                // Explicitly wait for links to be drawn on the screen before counting!
+                                await page.waitForSelector('a', { timeout: 15000 }).catch(() => null); 
+                                const linkCount = await page.evaluate(() => document.querySelectorAll('a').length);
+                                
+                                if (linkCount < 1) {
+                                    throw new Error("Page loaded, but zero links found. Possible blank page or database error.");
+                                }
+                                synthMessage = ` | 🤖 Synth: PASSED (${linkCount} links)`;
+                            } catch (synthErr) {
+                                throw new Error(`Synthetic Failure - ${synthErr.message}`);
                             }
                         }
 
                         let startupInfo = `(${perfMessage}${sslMessage}${synthMessage})`; 
 
-                        // --- LOGGING ---
-                        if (isCloudflare) {
-                            console.log(`   🛡️ UP (Cloudflare): ${url} | ${perfMessage}${synthMessage}`);
-                            logToHistory(url, "UP", `Cloudflare 403 | ${loadTimeMs}ms`);
-                        } else {
-                            console.log(`   ✅ UP: ${url} | ${perfMessage}${synthMessage}`);
-                            logToHistory(url, "UP", `OK 200 | ${loadTimeMs}ms`);
-                        }
+                        console.log(`   ✅ UP: ${url} | ${perfMessage}${sslMessage}${synthMessage}`);
+                        logToHistory(url, "UP", `OK 200 | ${loadTimeMs}ms`);
 
                         if (siteStates[url] === "DOWN" && !isFirstRun) {
-                            await sendTelegramAlert(`🟢 RECOVERY: ${url} is back online! (Response: ${loadTimeMs}ms)`);
+                            await sendTelegramAlert(`🟢 RECOVERY: ${url} is back online! (${perfMessage})`);
                         }
                         
                         siteStates[url] = "UP";
@@ -155,12 +154,15 @@ async function checkAllSites() {
                         console.log(`   ❌ DOWN: ${url} - ${error.message}`);
                         logToHistory(url, "DOWN", error.message);
                         
+                        // We attach the Performance and SSL data to the Error message so you still see it!
+                        const partialData = perfMessage ? `(${perfMessage}${sslMessage})` : "";
+                        
                         if (siteStates[url] !== "DOWN") {
-                            await sendTelegramAlert(`🚨 ALERT: ${url} is DOWN!\nError: ${error.message}`);
+                            await sendTelegramAlert(`🚨 ALERT: ${url} is DOWN! ${partialData}\nReason: ${error.message}`);
                         }
                         
                         siteStates[url] = "DOWN";
-                        reportLines.push(`❌ DOWN: ${url}`);
+                        reportLines.push(`❌ DOWN: ${url} ${partialData}\n    ↳ ${error.message}`);
                     } finally {
                         await page.close();
                     }
