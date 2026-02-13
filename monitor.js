@@ -11,7 +11,8 @@ console.log("🚀 FAST UPTIME ENGINE INITIATED...");
 const SITES_TO_CHECK = [
     'https://sproutgigs.com',
     'https://en.wikipedia.org',
-    'https://dherhoodsub.ng'
+    'https://dherhoodsub.ng',
+    'https://classyhaven.com.ng'
 ];
 
 // Strict 60-second intervals for professional monitoring
