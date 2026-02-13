@@ -5,7 +5,7 @@ puppeteer.use(StealthPlugin());
 const axios = require('axios');
 const fs = require('fs');
 
-console.log("🚀 FAST UPTIME & SSL ENGINE INITIATED...");
+console.log("🚀 LEVEL 2: PERFORMANCE & UPTIME ENGINE INITIATED...");
 
 // --- CONFIGURATION ---
 const SITES_TO_CHECK = [
@@ -40,7 +40,7 @@ function logToHistory(url, status, message) {
 }
 
 async function checkAllSites() {
-    console.log(`\n[${new Date().toLocaleTimeString()}] ⚡ Running 60s Ping & SSL Check...`);
+    console.log(`\n[${new Date().toLocaleTimeString()}] ⚡ Running 60s Performance Ping...`);
     
     let browser;
     try {
@@ -62,7 +62,14 @@ async function checkAllSites() {
                     const page = await browser.newPage();
                     
                     try {
+                        // --- LEVEL 2: START STOPWATCH ---
+                        const startTime = Date.now();
+                        
                         const response = await page.goto(url, { waitUntil: 'domcontentloaded', timeout: 30000 });
+                        
+                        // --- LEVEL 2: STOP STOPWATCH ---
+                        const loadTimeMs = Date.now() - startTime;
+
                         const title = await page.title();
                         const status = response ? response.status() : 0;
                         const securityDetails = response ? response.securityDetails() : null;
@@ -71,22 +78,22 @@ async function checkAllSites() {
                         const isActuallyDown = status >= 500 || status === 404 || title.includes("Page Not Found");
 
                         if (isActuallyDown) {
-                            throw new Error(`CRITICAL DOWN | Status: ${status} | Title: "${title}"`);
+                            throw new Error(`CRITICAL DOWN | Status: ${status}`);
                         }
 
                         let sslMessage = "";
-                        let startupSslInfo = ""; 
+                        let perfMessage = `⏱️ ${loadTimeMs}ms`;
+                        let startupInfo = `(${perfMessage})`; 
                         
-                        // --- LEVEL 1+ SSL MONITORING ---
+                        // --- LEVEL 1+: SSL MONITORING ---
                         if (securityDetails) {
                             const validToMs = securityDetails.validTo() * 1000;
                             const daysRemaining = Math.floor((validToMs - Date.now()) / (1000 * 60 * 60 * 24));
                             
-                            startupSslInfo = `(SSL: ${daysRemaining} days left)`;
+                            startupInfo = `(${perfMessage} | SSL: ${daysRemaining} days)`;
 
                             if (daysRemaining <= 14) {
                                 sslMessage = ` | ⚠️ SSL Expires in ${daysRemaining} days`;
-                                // Alert if we haven't already warned about this
                                 if (siteStates[url + "_ssl"] !== "EXPIRING") {
                                     await sendTelegramAlert(`🔐 SSL WARNING: The certificate for ${url} will expire in ${daysRemaining} days!`);
                                     siteStates[url + "_ssl"] = "EXPIRING";
@@ -96,21 +103,24 @@ async function checkAllSites() {
                             }
                         }
 
+                        // --- LOGGING THE DATA ---
                         if (isCloudflare) {
-                            console.log(`   🛡️ UP (Secured by Cloudflare): ${url}${sslMessage}`);
-                            logToHistory(url, "UP", `Cloudflare 403${sslMessage}`);
+                            console.log(`   🛡️ UP (Cloudflare): ${url} | ${perfMessage}${sslMessage}`);
+                            logToHistory(url, "UP", `Cloudflare 403 | ${loadTimeMs}ms${sslMessage}`);
                         } else {
-                            console.log(`   ✅ UP: ${url}${sslMessage}`);
-                            logToHistory(url, "UP", `OK 200${sslMessage}`);
+                            console.log(`   ✅ UP: ${url} | ${perfMessage}${sslMessage}`);
+                            logToHistory(url, "UP", `OK 200 | ${loadTimeMs}ms${sslMessage}`);
                         }
 
+                        // --- PERFORMANCE ALERTS (Optional Add-on Later) ---
+                        // You could add an alert here if loadTimeMs > 10000 (10 seconds)
+
                         if (siteStates[url] === "DOWN" && !isFirstRun) {
-                            await sendTelegramAlert(`🟢 RECOVERY: ${url} is back online!`);
+                            await sendTelegramAlert(`🟢 RECOVERY: ${url} is back online! (Response: ${loadTimeMs}ms)`);
                         }
                         
                         siteStates[url] = "UP";
-                        // Pushing the SSL data directly to the Telegram report
-                        reportLines.push(`✅ UP: ${url} ${startupSslInfo}`);
+                        reportLines.push(`✅ UP: ${url} ${startupInfo}`);
 
                     } catch (error) {
                         console.log(`   ❌ DOWN: ${url} - ${error.message}`);
@@ -128,7 +138,7 @@ async function checkAllSites() {
                 }
 
                 if (isFirstRun) {
-                    await sendTelegramAlert(`📊 **Uptime Engine Live:**\n${reportLines.join('\n')}`);
+                    await sendTelegramAlert(`📊 **Level 2 Engine Live:**\n${reportLines.join('\n')}`);
                     isFirstRun = false;
                 }
                 resolve(); 
