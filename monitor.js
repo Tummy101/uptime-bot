@@ -5,16 +5,17 @@ puppeteer.use(StealthPlugin());
 const axios = require('axios');
 const fs = require('fs');
 
-console.log("🚀 CLOUD BOOT SEQUENCE INITIATED...");
+console.log("🚀 FAST UPTIME ENGINE INITIATED...");
 
 // --- CONFIGURATION ---
 const SITES_TO_CHECK = [
     'https://sproutgigs.com',
-    'https://en.wikipedia.org'
+    'https://en.wikipedia.org',
+    'https://dherhoodsub.ng'
 ];
 
-// Base interval is 4 minutes (240,000ms), plus a random human delay later
-const BASE_INTERVAL = 240000; 
+// Strict 60-second intervals for professional monitoring
+const CHECK_INTERVAL = 60000; 
 
 const TELEGRAM_BOT_TOKEN = process.env.TELEGRAM_BOT_TOKEN || '8424829445:AAGkcpHHk9CyRNxDAazmfhXHPby5I7wauSc';
 const TELEGRAM_CHAT_ID = process.env.TELEGRAM_CHAT_ID || '7262907399';
@@ -39,12 +40,11 @@ function logToHistory(url, status, message) {
 }
 
 async function checkAllSites() {
-    console.log(`\n[${new Date().toLocaleTimeString()}] 🟡 Starting Check...`);
+    console.log(`\n[${new Date().toLocaleTimeString()}] ⚡ Running 60s Ping...`);
     
     let browser;
     try {
-        // --- 1. THE ZOMBIE KILLER TIMER ---
-        // If the whole process takes longer than 3 minutes, it kills the attempt
+        // --- THE ZOMBIE KILLER TIMER ---
         const checkPromise = new Promise(async (resolve, reject) => {
             try {
                 browser = await puppeteer.launch({
@@ -53,9 +53,7 @@ async function checkAllSites() {
                         '--no-sandbox', 
                         '--disable-setuid-sandbox',
                         '--disable-dev-shm-usage',
-                        '--disable-blink-features=AutomationControlled',
-                        '--single-process', // Crucial for low-RAM cloud servers
-                        '--window-size=1920,1080'
+                        '--single-process'
                     ]
                 });
 
@@ -63,43 +61,30 @@ async function checkAllSites() {
 
                 for (const url of SITES_TO_CHECK) {
                     const page = await browser.newPage();
-                    await page.setViewport({ width: 1920, height: 1080 });
-
+                    
                     try {
-                        const response = await page.goto(url, { 
-                            waitUntil: 'domcontentloaded', 
-                            timeout: 45000 // Individual page timeout
-                        });
-
-                        // Human pause to let Cloudflare calculate
-                        const waitTime = Math.floor(Math.random() * 3000) + 5000;
-                        await new Promise(r => setTimeout(r, waitTime));
-
+                        const response = await page.goto(url, { waitUntil: 'domcontentloaded', timeout: 30000 });
                         const title = await page.title();
                         const status = response ? response.status() : 0;
+
+                        // --- PROFESSIONAL UPTIME LOGIC ---
+                        // 403 means Cloudflare is actively protecting a live site.
+                        const isCloudflare = status === 403 || title.includes("Just a moment") || title.includes("Cloudflare");
                         
-                        // Extract text from the page body to ensure we aren't just looking at a "Please Wait" screen
-                        const bodyText = await page.evaluate(() => document.body.innerText);
+                        // True downtime is a 5xx server error, a 404 missing page, or a complete timeout.
+                        const isActuallyDown = status >= 500 || status === 404 || title.includes("Page Not Found");
 
-                        // --- THE ADVANCED CHECK ---
-                        const isBlocked = title.includes("Just a moment") || title.includes("Cloudflare") || status === 403;
-                        const isDown = status >= 400 || title.includes("Page Not Found");
-                        
-                        // Specific check for SproutGigs: If it loads but doesn't have the word "Freelance" or "Jobs", it might be a silent block.
-                        const isMissingContent = url.includes("sproutgigs") && !bodyText.toLowerCase().includes("freelance") && !bodyText.toLowerCase().includes("gigs");
-
-                        if (isBlocked) {
-                            throw new Error(`Cloudflare Blocked (Status: ${status})`);
-                        }
-                        if (isDown) {
-                            throw new Error(`Status: ${status} | Title: "${title}"`);
-                        }
-                        if (isMissingContent) {
-                            throw new Error("Page loaded, but missing expected SproutGigs content.");
+                        if (isActuallyDown) {
+                            throw new Error(`CRITICAL DOWN | Status: ${status} | Title: "${title}"`);
                         }
 
-                        console.log(`   ✅ UP: ${url}`);
-                        logToHistory(url, "UP", "OK");
+                        if (isCloudflare) {
+                            console.log(`   🛡️ UP (Secured by Cloudflare): ${url}`);
+                            logToHistory(url, "UP", "Cloudflare 403");
+                        } else {
+                            console.log(`   ✅ UP: ${url}`);
+                            logToHistory(url, "UP", "OK 200");
+                        }
 
                         if (siteStates[url] === "DOWN" && !isFirstRun) {
                             await sendTelegramAlert(`🟢 RECOVERY: ${url} is back online!`);
@@ -124,45 +109,31 @@ async function checkAllSites() {
                 }
 
                 if (isFirstRun) {
-                    await sendTelegramAlert(`📊 **Initial Cloud Report:**\n${reportLines.join('\n')}`);
+                    await sendTelegramAlert(`📊 **Uptime Engine Live:**\n${reportLines.join('\n')}`);
                     isFirstRun = false;
                 }
-                
                 resolve(); // Everything finished successfully
             } catch (err) {
                 reject(err); // Pass inner errors up
             }
         });
 
-        // Race the actual check against a 3-minute death timer
+        // Race the actual check against a 2-minute death timer (120000ms)
         await Promise.race([
             checkPromise,
-            new Promise((_, reject) => setTimeout(() => reject(new Error('Global Check Timeout (Zombie Killed)')), 180000))
+            new Promise((_, reject) => setTimeout(() => reject(new Error('Global Check Timeout (Zombie Killed)')), 120000))
         ]);
 
     } catch (err) {
-        console.error("CRITICAL BROWSER ERROR:", err.message);
+        console.error("ENGINE ERROR:", err.message);
     } finally {
         if (browser) {
             await browser.close();
-            console.log("🧹 Browser cleaned up for next cycle.");
+            console.log("🧹 Browser cleaned up.");
         }
     }
 }
 
-// --- SMART SCHEDULER ---
-function scheduleNextCheck() {
-    // Add a random delay between 0 and 2 minutes to the base 4 minute interval
-    // This means the bot checks every 4 to 6 minutes, never at exactly the same time.
-    const randomDelay = Math.floor(Math.random() * 120000); 
-    const nextInterval = BASE_INTERVAL + randomDelay;
-    
-    console.log(`⏱️ Next check scheduled in ${Math.round(nextInterval/1000)} seconds...`);
-    setTimeout(() => {
-        checkAllSites().then(scheduleNextCheck);
-    }, nextInterval);
-}
-
 // --- START ---
-console.log("🤖 Ultimate Stealth Monitor Started...");
-checkAllSites().then(scheduleNextCheck);
+checkAllSites();
+setInterval(checkAllSites, CHECK_INTERVAL);
