@@ -12,7 +12,7 @@ const SITES_TO_CHECK = [
     'https://sproutgigs.com',
     'https://en.wikipedia.org',
     'https://dherhoodsub.ng',
-    'https://classyhaven.com.ng'
+    'https://classyhaven.com.ng' 
 ];
 
 const CHECK_INTERVAL = 60000; 
@@ -75,12 +75,15 @@ async function checkAllSites() {
                         }
 
                         let sslMessage = "";
+                        let startupSslInfo = ""; 
                         
                         // --- LEVEL 1+ SSL MONITORING ---
                         if (securityDetails) {
                             const validToMs = securityDetails.validTo() * 1000;
                             const daysRemaining = Math.floor((validToMs - Date.now()) / (1000 * 60 * 60 * 24));
                             
+                            startupSslInfo = `(SSL: ${daysRemaining} days left)`;
+
                             if (daysRemaining <= 14) {
                                 sslMessage = ` | ⚠️ SSL Expires in ${daysRemaining} days`;
                                 // Alert if we haven't already warned about this
@@ -106,7 +109,8 @@ async function checkAllSites() {
                         }
                         
                         siteStates[url] = "UP";
-                        reportLines.push(`✅ UP: ${url}`);
+                        // Pushing the SSL data directly to the Telegram report
+                        reportLines.push(`✅ UP: ${url} ${startupSslInfo}`);
 
                     } catch (error) {
                         console.log(`   ❌ DOWN: ${url} - ${error.message}`);
