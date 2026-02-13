@@ -5,7 +5,7 @@ puppeteer.use(StealthPlugin());
 const axios = require('axios');
 const fs = require('fs');
 
-console.log("🚀 LEVEL 3.4: SYNTHETIC ENGINE INITIATED...");
+console.log("🚀 LEVEL 3.5: STABILIZED ENGINE INITIATED...");
 
 const SITES_TO_CHECK = [
     'https://en.wikipedia.org',
@@ -49,7 +49,8 @@ async function checkAllSites() {
                         '--no-sandbox', 
                         '--disable-setuid-sandbox',
                         '--disable-dev-shm-usage',
-                        '--single-process'
+                        '--disable-gpu',
+                        '--disable-features=IsolateOrigins,site-per-process'
                     ]
                 });
 
@@ -84,7 +85,6 @@ async function checkAllSites() {
                         if (securityDetails) {
                             const validToMs = securityDetails.validTo() * 1000;
                             const daysRemaining = Math.floor((validToMs - Date.now()) / (1000 * 60 * 60 * 24));
-                            
                             sslMessage = ` | 🔐 SSL: ${daysRemaining}d`;
 
                             if (daysRemaining <= 14) {
@@ -127,14 +127,12 @@ async function checkAllSites() {
                         }
 
                         let startupInfo = `(${perfMessage}${sslMessage}${synthMessage})`; 
-
                         console.log(`   ✅ UP: ${url} | ${perfMessage}${sslMessage}${synthMessage}`);
                         logToHistory(url, "UP", `OK 200 | ${loadTimeMs}ms`);
 
                         if (siteStates[url] === "DOWN" && !isFirstRun) {
                             await sendTelegramAlert(`🟢 RECOVERY: ${url} is back online! (${perfMessage})`);
                         }
-                        
                         siteStates[url] = "UP";
                         reportLines.push(`✅ UP: ${url} ${startupInfo}`);
 
@@ -142,11 +140,9 @@ async function checkAllSites() {
                         console.log(`   ❌ DOWN: ${url} - ${error.message}`);
                         logToHistory(url, "DOWN", error.message);
                         const partialData = perfMessage ? `(${perfMessage}${sslMessage})` : "";
-                        
                         if (siteStates[url] !== "DOWN" && !isFirstRun) {
                             await sendTelegramAlert(`🚨 ALERT: ${url} is DOWN! ${partialData}\nReason: ${error.message}`);
                         }
-                        
                         siteStates[url] = "DOWN";
                         reportLines.push(`❌ DOWN: ${url} ${partialData}\n    ↳ ${error.message}`);
                     } finally {
@@ -155,7 +151,7 @@ async function checkAllSites() {
                 }
 
                 if (isFirstRun) {
-                    await sendTelegramAlert(`📊 **Level 3 Engine Live:**\n${reportLines.join('\n')}`);
+                    await sendTelegramAlert(`📊 **Level 3.5 Engine Live:**\n${reportLines.join('\n')}`);
                     isFirstRun = false;
                 }
                 resolve(); 
