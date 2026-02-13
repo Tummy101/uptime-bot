@@ -5,13 +5,11 @@ puppeteer.use(StealthPlugin());
 const axios = require('axios');
 const fs = require('fs');
 
-console.log("🚀 LEVEL 2: PERFORMANCE & UPTIME ENGINE INITIATED...");
+console.log("🚀 LEVEL 3: SYNTHETIC ENGINE INITIATED...");
 
 // --- CONFIGURATION ---
 const SITES_TO_CHECK = [
-    'https://sproutgigs.com',
     'https://en.wikipedia.org',
-    'https://dherhoodsub.ng',
     'https://classyhaven.com.ng' 
 ];
 
@@ -40,7 +38,7 @@ function logToHistory(url, status, message) {
 }
 
 async function checkAllSites() {
-    console.log(`\n[${new Date().toLocaleTimeString()}] ⚡ Running 60s Performance Ping...`);
+    console.log(`\n[${new Date().toLocaleTimeString()}] ⚡ Running 60s Performance & Synthetic Ping...`);
     
     let browser;
     try {
@@ -62,12 +60,8 @@ async function checkAllSites() {
                     const page = await browser.newPage();
                     
                     try {
-                        // --- LEVEL 2: START STOPWATCH ---
                         const startTime = Date.now();
-                        
                         const response = await page.goto(url, { waitUntil: 'domcontentloaded', timeout: 30000 });
-                        
-                        // --- LEVEL 2: STOP STOPWATCH ---
                         const loadTimeMs = Date.now() - startTime;
 
                         const title = await page.title();
@@ -82,38 +76,73 @@ async function checkAllSites() {
                         }
 
                         let sslMessage = "";
+                        let synthMessage = "";
                         let perfMessage = `⏱️ ${loadTimeMs}ms`;
-                        let startupInfo = `(${perfMessage})`; 
-                        
+
+                        // --- LEVEL 3: SYNTHETIC TRANSACTIONS ---
+                        if (isCloudflare) {
+                            synthMessage = " | 🤖 Synth: Skipped (Cloudflare Wall)";
+                        } else if (url.includes('wikipedia.org')) {
+                            // Wikipedia Search Test
+                            try {
+                                await page.waitForSelector('input[name="search"]', { timeout: 5000 });
+                                await page.type('input[name="search"]', 'Node.js');
+                                
+                                await Promise.all([
+                                    page.waitForNavigation({ waitUntil: 'domcontentloaded', timeout: 10000 }),
+                                    page.keyboard.press('Enter')
+                                ]);
+                                
+                                const newTitle = await page.title();
+                                if (!newTitle.includes('Node.js')) {
+                                    throw new Error("Search button failed to return correct data.");
+                                }
+                                synthMessage = " | 🤖 Synth: SEARCH PASSED";
+                            } catch (synthErr) {
+                                throw new Error(`Synthetic Failure - ${synthErr.message}`);
+                            }
+                        } else if (url.includes('classyhaven.com.ng')) {
+                            // Classy Haven Render Test
+                            try {
+                                // Count how many clickable links are on the page to ensure it's not a blank white screen
+                                const linkCount = await page.evaluate(() => document.querySelectorAll('a').length);
+                                
+                                if (linkCount < 1) {
+                                    throw new Error("Page loaded, but zero links found. Possible blank page or database error.");
+                                }
+                                synthMessage = ` | 🤖 Synth: RENDER PASSED (${linkCount} links found)`;
+                            } catch (synthErr) {
+                                throw new Error(`Synthetic Failure - ${synthErr.message}`);
+                            }
+                        }
+
                         // --- LEVEL 1+: SSL MONITORING ---
                         if (securityDetails) {
                             const validToMs = securityDetails.validTo() * 1000;
                             const daysRemaining = Math.floor((validToMs - Date.now()) / (1000 * 60 * 60 * 24));
                             
-                            startupInfo = `(${perfMessage} | SSL: ${daysRemaining} days)`;
-
                             if (daysRemaining <= 14) {
                                 sslMessage = ` | ⚠️ SSL Expires in ${daysRemaining} days`;
                                 if (siteStates[url + "_ssl"] !== "EXPIRING") {
-                                    await sendTelegramAlert(`🔐 SSL WARNING: The certificate for ${url} will expire in ${daysRemaining} days!`);
+                                    await sendTelegramAlert(`🔐 SSL WARNING: ${url} certificate expires in ${daysRemaining} days!`);
                                     siteStates[url + "_ssl"] = "EXPIRING";
                                 }
                             } else {
                                 siteStates[url + "_ssl"] = "SECURE";
+                                sslMessage = ` | 🔐 SSL: ${daysRemaining}d`;
                             }
                         }
 
-                        // --- LOGGING THE DATA ---
-                        if (isCloudflare) {
-                            console.log(`   🛡️ UP (Cloudflare): ${url} | ${perfMessage}${sslMessage}`);
-                            logToHistory(url, "UP", `Cloudflare 403 | ${loadTimeMs}ms${sslMessage}`);
-                        } else {
-                            console.log(`   ✅ UP: ${url} | ${perfMessage}${sslMessage}`);
-                            logToHistory(url, "UP", `OK 200 | ${loadTimeMs}ms${sslMessage}`);
-                        }
+                        let startupInfo = `(${perfMessage}${sslMessage}${synthMessage})`; 
 
-                        // --- PERFORMANCE ALERTS (Optional Add-on Later) ---
-                        // You could add an alert here if loadTimeMs > 10000 (10 seconds)
+                        // --- LOGGING ---
+                        if (isCloudflare) {
+                            console.log(`   🛡️ UP (Cloudflare): ${url} | ${perfMessage}${synthMessage}`);
+                            logToHistory(url, "UP", `Cloudflare 403 | ${loadTimeMs}ms`);
+                        } else {
+                            console.log(`   ✅ UP: ${url} | ${perfMessage}${synthMessage}`);
+                            logToHistory(url, "UP", `OK 200 | ${loadTimeMs}ms`);
+                        }
 
                         if (siteStates[url] === "DOWN" && !isFirstRun) {
                             await sendTelegramAlert(`🟢 RECOVERY: ${url} is back online! (Response: ${loadTimeMs}ms)`);
@@ -138,7 +167,7 @@ async function checkAllSites() {
                 }
 
                 if (isFirstRun) {
-                    await sendTelegramAlert(`📊 **Level 2 Engine Live:**\n${reportLines.join('\n')}`);
+                    await sendTelegramAlert(`📊 **Level 3 Engine Live:**\n${reportLines.join('\n')}`);
                     isFirstRun = false;
                 }
                 resolve(); 
@@ -149,7 +178,7 @@ async function checkAllSites() {
 
         await Promise.race([
             checkPromise,
-            new Promise((_, reject) => setTimeout(() => reject(new Error('Global Check Timeout (Zombie Killed)')), 120000))
+            new Promise((_, reject) => setTimeout(() => reject(new Error('Global Check Timeout (Zombie Killed)')), 150000))
         ]);
 
     } catch (err) {
